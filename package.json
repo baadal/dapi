@@ -1,0 +1,103 @@
+{
+  "name": "starter-lib",
+  "version": "0.1.0",
+  "description": "Starter kit for package development",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "typings": "dist/types/index.d.ts",
+  "source": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js"
+    },
+    "./cjs": "./dist/cjs/index.js"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "author": "Abhishek Raj <abhi@raj.me>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.10.0"
+  },
+  "scripts": {
+    "build": "npm run verify && bash tasks/build.sh",
+    "clean": "shx rm -rf dist",
+    "lint": "eslint '**/*.{js,jsx,ts,tsx}'",
+    "lint:fix": "npm run lint -- --fix",
+    "prepub": "run-s --silent clean build",
+    "pub": "npm run prepub && npm publish",
+    "pub:test": "npm run prepub && npm publish --dry-run",
+    "verify": "jsonlint -q tsconfig.json",
+    "blame": "git log -S",
+    "hist": "git log --oneline | grep -i",
+    "follow": "git log --follow --oneline",
+    "ncu": "ncu",
+    "ncuu": "ncu -u"
+  },
+  "devDependencies": {
+    "@babel/core": "7.15.5",
+    "@babel/preset-env": "7.15.6",
+    "@babel/preset-react": "^7.14.5",
+    "@babel/preset-typescript": "7.15.0",
+    "@types/node": "16.9.6",
+    "@types/react": "^16.0.0",
+    "@types/react-dom": "^16.0.0",
+    "@typescript-eslint/eslint-plugin": "4.31.2",
+    "@typescript-eslint/parser": "4.31.2",
+    "babel-loader": "8.2.2",
+    "eslint": "7.32.0",
+    "eslint-config-airbnb": "18.2.1",
+    "eslint-config-airbnb-typescript": "14.0.0",
+    "eslint-config-prettier": "8.3.0",
+    "eslint-plugin-import": "2.24.2",
+    "eslint-plugin-jsx-a11y": "6.4.1",
+    "eslint-plugin-prettier": "4.0.0",
+    "eslint-plugin-react": "7.26.0",
+    "eslint-plugin-react-hooks": "4.2.0",
+    "husky": "4.3.8",
+    "jsonlint": "1.6.3",
+    "lint-staged": "11.1.2",
+    "npm-run-all": "4.1.5",
+    "prettier": "2.4.1",
+    "shx": "0.3.3",
+    "typescript": "4.4.3",
+    "webpack": "5.53.0",
+    "webpack-cli": "4.8.0",
+    "webpack-node-externals": "3.0.0"
+  },
+  "dependencies": {
+    "core-js": "3.18.0"
+  },
+  "peerDependencies": {
+    "react": ">=16.8.6",
+    "react-dom": ">=16.8.6"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "browserslist": [
+    "chrome >= 23"
+  ],
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": "eslint --fix"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baadal/starter-lib.git"
+  },
+  "homepage": "https://github.com/baadal/starter-lib#readme"
+}
