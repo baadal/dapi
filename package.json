@@ -1,7 +1,7 @@
 {
-  "name": "starter-lib",
-  "version": "0.1.0",
-  "description": "Starter kit for package development",
+  "name": "@baadal-sdk/dapi",
+  "version": "0.16.0",
+  "description": "Dead-simple API wrappers",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "typings": "dist/types/index.d.ts",
@@ -19,6 +19,9 @@
   ],
   "author": "Abhishek Raj <abhi@raj.me>",
   "license": "MIT",
+  "engines": {
+    "node": ">=12.5.0"
+  },
   "scripts": {
     "build": "npm run verify && bash tasks/build.sh",
     "clean": "shx rm -rf dist",
@@ -92,7 +95,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/baadal/starter-lib.git"
+    "url": "git+https://github.com/baadal/dapi.git"
   },
-  "homepage": "https://github.com/baadal/starter-lib#readme"
+  "homepage": "https://github.com/baadal/dapi#readme"
 }
