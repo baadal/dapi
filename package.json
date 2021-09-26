@@ -1,6 +1,6 @@
 {
   "name": "@baadal-sdk/dapi",
-  "version": "0.16.0",
+  "version": "0.27.0",
   "description": "Dead-simple API wrappers",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
