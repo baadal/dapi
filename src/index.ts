@@ -1,9 +1,5 @@
-import fs from './fs';
+import * as fs from './fs';
 
-const foo = () => {
-  return 'bar';
-};
-
-export { fs, foo };
-export const num = 5;
-export default fs;
+// Ref: https://stackoverflow.com/a/41283945
+export { fs }; // named exports
+export default { fs }; // default export
