@@ -55,7 +55,9 @@
     "@aws-sdk/client-dynamodb": "^3.34.0",
     "@aws-sdk/lib-dynamodb": "^3.34.0",
     "core-js": "^3.18.0",
+    "js-base64": "^3.7.2",
     "rimraf": "^3.0.2",
+    "sha-1": "^1.0.0",
     "short-uuid": "^4.2.0"
   },
   "devDependencies": {
