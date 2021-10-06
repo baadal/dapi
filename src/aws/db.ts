@@ -122,7 +122,12 @@ export const updateItem = async (
   return true;
 };
 
-export const readItem = async <T = any>(table: string, key: StringIndexable, projection = '') => {
+export const readItem = async <T = any>(
+  table: string,
+  key: StringIndexable,
+  projection?: string,
+  attrNames?: StringIndexable
+) => {
   if (!dbDocClient) return initializationError();
   if (!table || !key) return null;
 
@@ -131,6 +136,7 @@ export const readItem = async <T = any>(table: string, key: StringIndexable, pro
 
   // Ref: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Expressions.ProjectionExpressions.html
   if (projection) cmdParams = { ...cmdParams, ProjectionExpression: projection };
+  if (attrNames) cmdParams = { ...cmdParams, ExpressionAttributeNames: attrNames };
 
   const command = new GetCommand(cmdParams);
 
