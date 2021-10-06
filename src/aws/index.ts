@@ -1,10 +1,11 @@
 import * as dbAll from './db';
+import { error } from '../common/logger';
 
 const { init: dbInit, ...db } = dbAll;
 
 const init = (region: string) => {
   if (!region) {
-    console.warn(`[WARN] AWS initialization error! Missing region: ${region}`);
+    error(`AWS initialization error! Missing region: ${region}`);
     return;
   }
 

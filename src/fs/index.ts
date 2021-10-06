@@ -4,6 +4,7 @@ import fs from 'fs';
 import fsa from 'fs/promises';
 
 import { CustomError } from '../common/error';
+import { warn as cwarn } from '../common/logger';
 
 const assertPath = (p: string) => {
   if (!p || p.startsWith('/')) return p;
@@ -73,7 +74,7 @@ export const readFile = async (file: string, warn = false) => {
   try {
     contents = await fsa.readFile(file, 'utf8');
   } catch (e) {
-    if (warn) console.warn(`Cannot read file: ${file}`);
+    if (warn) cwarn(`Cannot read file: ${file}`);
   }
   return contents;
 };
@@ -91,7 +92,7 @@ export const readFileSync = (file: string, warn = false) => {
   try {
     contents = fs.readFileSync(file, 'utf8');
   } catch (e) {
-    if (warn) console.warn(`Cannot read file: ${file}`);
+    if (warn) cwarn(`Cannot read file: ${file}`);
   }
   return contents;
 };
@@ -127,7 +128,7 @@ export const readDir = async (dir: string, warn = false) => {
       }
     });
   } catch (e) {
-    if (warn) console.warn(`Cannot read dir: ${dir}`);
+    if (warn) cwarn(`Cannot read dir: ${dir}`);
   }
 
   return { dirs, files } as { dirs: string[] | null; files: string[] | null };
