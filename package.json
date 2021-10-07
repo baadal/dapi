@@ -78,9 +78,7 @@
     "@octokit/core": "^3.5.1",
     "chalk": "^2.4.2",
     "core-js": "^3.18.0",
-    "js-base64": "^3.7.2",
     "rimraf": "^3.0.2",
-    "sha-1": "^1.0.0",
     "short-uuid": "^4.2.0"
   },
   "peerDependencies": {
