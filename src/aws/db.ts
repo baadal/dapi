@@ -16,6 +16,8 @@ import {
   QueryCommandInput,
   ScanCommand,
   ScanCommandInput,
+  DeleteCommand,
+  DeleteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import short from 'short-uuid';
 
@@ -34,7 +36,9 @@ export const init = (region: string) => {
   const dbClient = new DynamoDBClient({ region });
 
   // Ref: https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/modules/_aws_sdk_lib_dynamodb.html#configuration
-  dbDocClient = DynamoDBDocumentClient.from(dbClient);
+  if (!dbDocClient) {
+    dbDocClient = DynamoDBDocumentClient.from(dbClient);
+  }
 };
 
 const writeItemForceHelper = async <T = any>(table: string, data: T, key: string, i: number): Promise<T | null> => {
@@ -230,6 +234,25 @@ export const scanItems = async (table: string, projection = '') => {
   }
 
   return contents;
+};
+
+export const deleteItem = async (table: string, key: StringIndexable) => {
+  if (!dbDocClient) return initializationError();
+  if (!table || !key) return null;
+
+  const cmdParams: DeleteCommandInput = { TableName: table, Key: key };
+  const command = new DeleteCommand(cmdParams);
+
+  try {
+    await dbDocClient.send(command);
+  } catch (err) {
+    console.error('DeleteCommandInput:', cmdParams);
+    console.error(err);
+    // throw err;
+    return false;
+  }
+
+  return true;
 };
 
 // ----------------
