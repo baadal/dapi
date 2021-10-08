@@ -1,15 +1,19 @@
 import * as db from './db';
 import { error } from '../common/logger';
 
-const { init: dbInit } = db;
+const { init: dbInit, status: dbStatus } = db;
 
 const init = (region: string) => {
   if (!region) {
     error(`AWS initialization error! Missing region: ${region}`);
-    return;
+    return false;
   }
 
-  dbInit(region);
+  return dbInit(region);
 };
 
-export { db, init }; // named exports
+const status = () => {
+  return dbStatus();
+};
+
+export { db, init, status }; // named exports
