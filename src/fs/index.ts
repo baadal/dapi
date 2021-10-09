@@ -101,14 +101,15 @@ export const readFileSync = (file: string, warn = false) => {
  * Get the list of files/directories in a directory
  * @param dir directory path
  * @param warn whether to show warnings [default: false]
+ * @param hiddenItems whether to include items starting with dot(.) [default: false]
  * @returns an object {dirs,files} containing list of directories & files
  */
-export const readDir = async (dir: string, warn = false) => {
+export const readDir = async (dir: string, warn = false, hiddenItems = false) => {
   if (!dir) return { dirs: null, files: null };
   dir = assertPath(dir);
 
-  let files: string[] | null = null;
   let dirs: string[] | null = null;
+  let files: string[] | null = null;
 
   try {
     const items = await fsa.readdir(dir, { withFileTypes: true });
@@ -131,6 +132,11 @@ export const readDir = async (dir: string, warn = false) => {
     if (warn) cwarn(`Cannot read dir: ${dir}`);
   }
 
+  if (!hiddenItems) {
+    if (dirs) dirs = (dirs as string[]).filter(d => !d.startsWith('.'));
+    if (files) files = (files as string[]).filter(f => !f.startsWith('.'));
+  }
+
   return { dirs, files } as { dirs: string[] | null; files: string[] | null };
 };
 
@@ -138,24 +144,26 @@ export const readDir = async (dir: string, warn = false) => {
  * Get the list of files in a directory
  * @param dir directory path
  * @param warn whether to show warnings [default: false]
+ * @param hiddenItems whether to include items starting with dot(.) [default: false]
  * @returns list of files, null in case of error or no items
  */
-export const readDirFiles = async (dir: string, warn = false) => {
+export const readDirFiles = async (dir: string, warn = false, hiddenItems = false) => {
   if (!dir) return null;
   dir = assertPath(dir);
-  return (await readDir(dir, warn)).files;
+  return (await readDir(dir, warn, hiddenItems)).files;
 };
 
 /**
  * Get the list of directories in a directory
  * @param dir directory path
  * @param warn whether to show warnings [default: false]
+ * @param hiddenItems whether to include items starting with dot(.) [default: false]
  * @returns list of directories, null in case of error or no items
  */
-export const readDirDirs = async (dir: string, warn = false) => {
+export const readDirDirs = async (dir: string, warn = false, hiddenItems = false) => {
   if (!dir) return null;
   dir = assertPath(dir);
-  return (await readDir(dir, warn)).dirs;
+  return (await readDir(dir, warn, hiddenItems)).dirs;
 };
 
 const readDirFilesRecHelper = async (dir: string, basePath = ''): Promise<string[] | null> => {
@@ -182,9 +190,16 @@ const readDirFilesRecHelper = async (dir: string, basePath = ''): Promise<string
 /**
  * Get the (recursive) list of files in a directory
  * @param dir directory path
+ * @param hiddenItems whether to include items starting with dot(.) [default: false]
  * @returns complete (recursive) list of files, null in case of error or no items
  */
-export const readDirFilesRec = (dir: string) => readDirFilesRecHelper(dir);
+export const readDirFilesRec = async (dir: string, hiddenItems = false) => {
+  let allFiles = await readDirFilesRecHelper(dir);
+  if (!hiddenItems) {
+    if (allFiles) allFiles = allFiles.filter(f => !f.startsWith('.'));
+  }
+  return allFiles;
+};
 
 /**
  * Write contents to a file (creates the file path if it doesn't exist)
