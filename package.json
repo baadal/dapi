@@ -44,6 +44,7 @@
     "@babel/preset-env": "7.15.6",
     "@babel/preset-react": "^7.14.5",
     "@babel/preset-typescript": "7.15.0",
+    "@types/mime-types": "^2.1.1",
     "@types/node": "16.9.6",
     "@types/react": "^16.0.0",
     "@types/react-dom": "^16.0.0",
@@ -74,10 +75,13 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.34.0",
+    "@aws-sdk/client-s3": "^3.36.0",
     "@aws-sdk/lib-dynamodb": "^3.34.0",
+    "@baadal-sdk/utils": "0.12.0",
     "@octokit/core": "^3.5.1",
     "chalk": "^2.4.2",
     "core-js": "^3.18.0",
+    "mime-types": "^2.1.33",
     "rimraf": "^3.0.2",
     "short-uuid": "^4.2.0"
   },
