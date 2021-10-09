@@ -1,4 +1,7 @@
 /**
+ * Examples:
+ * Ref: https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/dynamodb-examples.html
+ *
  * Partition key vs Composite primary key:
  * Ref: https://aws.amazon.com/premiumsupport/knowledge-center/primary-key-dynamodb-table/
  */
@@ -21,18 +24,17 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import short from 'short-uuid';
 
-import dbClient from './db-client';
+import { dbClient } from './client';
 import { StringIndexable } from '../common/common.model';
 import { CustomError } from '../common/error';
 
 const DynamoDBError = (msg: string) => new CustomError(msg, { name: 'DynamoDBError' });
 
 export const init = (region: string) => {
-  const dydbClient = new DynamoDBClient({ region });
-
   // Ref: https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/modules/_aws_sdk_lib_dynamodb.html#configuration
-  if (!dbClient.dbDocClient) {
-    dbClient.dbDocClient = DynamoDBDocumentClient.from(dydbClient);
+  if (!dbClient.client) {
+    const dydbClient = new DynamoDBClient({ region }); // may also pass `credentials`
+    dbClient.client = DynamoDBDocumentClient.from(dydbClient);
     dbClient.id = short.uuid();
     return true;
   }
@@ -42,11 +44,11 @@ export const init = (region: string) => {
 export const status = () => dbClient.id;
 
 const tryInit = (silent = false) => {
-  if (status()) return;
+  if (dbClient.client) return;
   const region = process.env.AWS_REGION || '';
   if (region) {
     if (init(region)) {
-      // console.log('Auto-initialization successful');
+      // console.log('Auto-initialization of DynamoDB successful');
       return;
     }
   }
@@ -60,8 +62,8 @@ const tryInit = (silent = false) => {
 tryInit(true);
 
 const writeItemForceHelper = async <T = any>(table: string, data: T, key: string, i: number): Promise<T | null> => {
-  if (!dbClient.dbDocClient) tryInit();
-  if (!dbClient.dbDocClient) return null;
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
   if (!table || !data) return null;
 
   if (!(data as any)[key]) {
@@ -72,7 +74,7 @@ const writeItemForceHelper = async <T = any>(table: string, data: T, key: string
   const numberOfAttempts = 3;
 
   try {
-    await dbClient.dbDocClient.send(command);
+    await dbClient.client.send(command);
   } catch (err: any) {
     // console.error('PutCommandInput:', cmdParams);
     // console.error(err);
@@ -96,15 +98,15 @@ export const writeItemForce = async <T = any>(table: string, data: T, key = 'id'
 };
 
 export const writeItem = async (table: string, data: StringIndexable) => {
-  if (!dbClient.dbDocClient) tryInit();
-  if (!dbClient.dbDocClient) return null;
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
   if (!table || !data) return null;
 
   const cmdParams: PutCommandInput = { TableName: table, Item: data };
   const command = new PutCommand(cmdParams);
 
   try {
-    await dbClient.dbDocClient.send(command);
+    await dbClient.client.send(command);
   } catch (err) {
     console.error('PutCommandInput:', cmdParams);
     console.error(err);
@@ -122,8 +124,8 @@ export const updateItem = async (
   attr: StringIndexable,
   attrNames?: StringIndexable
 ) => {
-  if (!dbClient.dbDocClient) tryInit();
-  if (!dbClient.dbDocClient) return null;
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
   if (!table || !key || !update || !attr) return null;
 
   let cmdParams: UpdateCommandInput = {
@@ -136,7 +138,7 @@ export const updateItem = async (
   const command = new UpdateCommand(cmdParams);
 
   try {
-    await dbClient.dbDocClient.send(command);
+    await dbClient.client.send(command);
   } catch (err) {
     console.error('UpdateCommandInput:', cmdParams);
     console.error(err);
@@ -153,8 +155,8 @@ export const readItem = async <T = any>(
   projection?: string,
   attrNames?: StringIndexable
 ) => {
-  if (!dbClient.dbDocClient) tryInit();
-  if (!dbClient.dbDocClient) return null;
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
   if (!table || !key) return null;
 
   let contents: T | null = null;
@@ -167,7 +169,7 @@ export const readItem = async <T = any>(
   const command = new GetCommand(cmdParams);
 
   try {
-    const results = await dbClient.dbDocClient.send(command);
+    const results = await dbClient.client.send(command);
     const item = results.Item;
 
     if (item) {
@@ -190,8 +192,8 @@ export const queryItems = async (
   projection = '',
   desc = false
 ) => {
-  if (!dbClient.dbDocClient) tryInit();
-  if (!dbClient.dbDocClient) return null;
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
   if (!table || !cond || !attr) return null;
 
   let contents: StringIndexable[] | null = null;
@@ -213,7 +215,7 @@ export const queryItems = async (
   const command = new QueryCommand(cmdParams);
 
   try {
-    const results = await dbClient.dbDocClient.send(command);
+    const results = await dbClient.client.send(command);
     const items = results.Items;
 
     if (items) {
@@ -229,8 +231,8 @@ export const queryItems = async (
 };
 
 export const scanItems = async (table: string, projection = '') => {
-  if (!dbClient.dbDocClient) tryInit();
-  if (!dbClient.dbDocClient) return null;
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
   if (!table) return null;
 
   let contents: StringIndexable[] | null = null;
@@ -245,7 +247,7 @@ export const scanItems = async (table: string, projection = '') => {
   const command = new ScanCommand(cmdParams);
 
   try {
-    const results = await dbClient.dbDocClient.send(command);
+    const results = await dbClient.client.send(command);
     const items = results.Items;
 
     if (items) {
@@ -261,15 +263,15 @@ export const scanItems = async (table: string, projection = '') => {
 };
 
 export const deleteItem = async (table: string, key: StringIndexable) => {
-  if (!dbClient.dbDocClient) tryInit();
-  if (!dbClient.dbDocClient) return null;
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
   if (!table || !key) return null;
 
   const cmdParams: DeleteCommandInput = { TableName: table, Key: key };
   const command = new DeleteCommand(cmdParams);
 
   try {
-    await dbClient.dbDocClient.send(command);
+    await dbClient.client.send(command);
   } catch (err) {
     console.error('DeleteCommandInput:', cmdParams);
     console.error(err);
