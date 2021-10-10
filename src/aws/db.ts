@@ -11,8 +11,12 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   GetCommandInput,
+  BatchGetCommand,
+  BatchGetCommandInput,
   PutCommand,
   PutCommandInput,
+  BatchWriteCommand,
+  BatchWriteCommandInput,
   UpdateCommand,
   UpdateCommandInput,
   QueryCommand,
@@ -27,6 +31,10 @@ import short from 'short-uuid';
 import { dbClient } from './client';
 import { StringIndexable } from '../common/common.model';
 import { CustomError } from '../common/error';
+import { warn, error } from '../common/logger';
+
+const BATCH_SIZE = 20; // (max) number of items in a batch request
+const CHUNK_SIZE = 10; // (max) number of parallel requests at a time
 
 const DynamoDBError = (msg: string) => new CustomError(msg, { name: 'DynamoDBError' });
 
@@ -76,8 +84,6 @@ const writeItemForceHelper = async <T = any>(table: string, data: T, key: string
   try {
     await dbClient.client.send(command);
   } catch (err: any) {
-    // console.error('PutCommandInput:', cmdParams);
-    // console.error(err);
     if (err.name === 'ConditionalCheckFailedException') {
       if (i < numberOfAttempts - 1) {
         (data as any)[key] = short.uuid(); // new primary key
@@ -85,7 +91,7 @@ const writeItemForceHelper = async <T = any>(table: string, data: T, key: string
         return ret;
       }
       console.error('PutCommandInput:', cmdParams);
-      console.error('[ERROR] Maximum attempts overflow!');
+      error('[ERROR] Maximum attempts overflow!');
     }
     return null;
   }
@@ -97,12 +103,12 @@ export const writeItemForce = async <T = any>(table: string, data: T, key = 'id'
   return writeItemForceHelper<T>(table, data, key, 0);
 };
 
-export const writeItem = async (table: string, data: StringIndexable) => {
+export const writeItem = async (table: string, item: StringIndexable) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !data) return null;
+  if (!table || !item) return null;
 
-  const cmdParams: PutCommandInput = { TableName: table, Item: data };
+  const cmdParams: PutCommandInput = { TableName: table, Item: item };
   const command = new PutCommand(cmdParams);
 
   try {
@@ -115,6 +121,62 @@ export const writeItem = async (table: string, data: StringIndexable) => {
   }
 
   return true;
+};
+
+// Ref: https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/dynamodb-example-table-read-write-batch.html
+const batchWriteItems = async (table: string, items: StringIndexable[]) => {
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
+  if (!table || !items || !Array.isArray(items) || !items.length) return null;
+
+  const reqList = items.map(item => ({ PutRequest: { Item: item } }));
+  const cmdParams: BatchWriteCommandInput = {
+    RequestItems: {
+      [table]: reqList,
+    },
+  };
+
+  const command = new BatchWriteCommand(cmdParams);
+
+  try {
+    await dbClient.client.send(command);
+  } catch (err) {
+    console.error('BatchWriteCommandInput:', cmdParams);
+    console.error(err);
+    return null;
+    // throw err;
+  }
+
+  return true;
+};
+
+export const writeItemsAll = async (table: string, items: StringIndexable[]) => {
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
+  if (!table || !items || !Array.isArray(items) || !items.length) return null;
+
+  let errFlag = false;
+
+  const batchSize = BATCH_SIZE;
+  const chunkSize = CHUNK_SIZE;
+
+  const batchedItems = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const bitems = items.slice(i, i + batchSize);
+    batchedItems.push(bitems);
+  }
+
+  for (let i = 0; i < batchedItems.length; i += chunkSize) {
+    const bchunks = batchedItems.slice(i, i + chunkSize);
+
+    const brlist = bchunks.map(iItems => batchWriteItems(table, iItems));
+    const bslist = await Promise.all(brlist); // eslint-disable-line no-await-in-loop
+
+    const isSuccess = bslist.every(e => e === true);
+    if (!isSuccess) errFlag = true;
+  }
+
+  return errFlag ? null : true;
 };
 
 export const updateItem = async (
@@ -179,6 +241,93 @@ export const readItem = async <T = any>(
     console.error('GetCommandInput:', cmdParams);
     console.error(err);
     // throw err;
+  }
+
+  return contents;
+};
+
+// Ref: https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/dynamodb-example-table-read-write-batch.html
+const batchReadItems = async <T = any>(
+  table: string,
+  keys: StringIndexable[],
+  projection?: string,
+  attrNames?: StringIndexable
+) => {
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
+  if (!table || !keys || !Array.isArray(keys) || !keys.length) return null;
+
+  let contents: StringIndexable<T>[] | null = null;
+
+  let reqParams: any = { Keys: keys };
+  if (projection) reqParams = { ...reqParams, ProjectionExpression: projection };
+  if (attrNames) reqParams = { ...reqParams, ExpressionAttributeNames: attrNames };
+
+  const cmdParams: BatchGetCommandInput = {
+    RequestItems: {
+      [table]: reqParams,
+    },
+  };
+
+  const command = new BatchGetCommand(cmdParams);
+
+  try {
+    const results = await dbClient.client.send(command);
+    const items = results.Responses;
+
+    if (items && items[table]) {
+      contents = items[table];
+    }
+  } catch (err) {
+    console.error('BatchGetCommandInput:', cmdParams);
+    console.error(err);
+    // throw err;
+  }
+
+  return contents;
+};
+
+// Note: ordering of items in result may not be same as that in `keys`
+export const readItemsAll = async <T = any>(
+  table: string,
+  keys: StringIndexable[],
+  projection?: string,
+  attrNames?: StringIndexable
+) => {
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
+  if (!table || !keys || !Array.isArray(keys) || !keys.length) return null;
+
+  let contents: StringIndexable<T>[] | null = null;
+  let errFlag = false;
+
+  const batchSize = BATCH_SIZE;
+  const chunkSize = CHUNK_SIZE;
+
+  const batchedKeys = [];
+  for (let i = 0; i < keys.length; i += batchSize) {
+    const bkeys = keys.slice(i, i + batchSize);
+    batchedKeys.push(bkeys);
+  }
+
+  for (let i = 0; i < batchedKeys.length; i += chunkSize) {
+    const bchunks = batchedKeys.slice(i, i + chunkSize);
+
+    const brlist = bchunks.map(ikeys => batchReadItems(table, ikeys, projection, attrNames));
+    const bslist = await Promise.all(brlist); // eslint-disable-line no-await-in-loop
+
+    const icontents = bslist.flat();
+    const isError = icontents.find(e => e === null) === null;
+    if (isError) {
+      errFlag = true;
+      contents = null;
+    } else if (!errFlag) {
+      if (contents) {
+        contents = contents.concat(icontents as StringIndexable[]);
+      } else {
+        contents = icontents as StringIndexable[];
+      }
+    }
   }
 
   return contents;
@@ -250,6 +399,11 @@ export const scanItems = async (table: string, projection = '') => {
     const results = await dbClient.client.send(command);
     const items = results.Items;
 
+    // Ref: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Scan.html#Scan.Pagination
+    if (results.LastEvaluatedKey) {
+      warn('Partial results obtained! Consider pagination.');
+    }
+
     if (items) {
       contents = items;
     }
@@ -280,6 +434,63 @@ export const deleteItem = async (table: string, key: StringIndexable) => {
   }
 
   return true;
+};
+
+// Ref: https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/dynamodb-example-table-read-write-batch.html
+// Ref: https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-dynamodb/interfaces/batchwriteitemcommandinput.html#requestitems
+const batchDeleteItems = async (table: string, keys: StringIndexable[]) => {
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
+  if (!table || !keys || !Array.isArray(keys) || !keys.length) return null;
+
+  const reqList = keys.map(key => ({ DeleteRequest: { Key: key } }));
+  const cmdParams: BatchWriteCommandInput = {
+    RequestItems: {
+      [table]: reqList,
+    },
+  };
+
+  const command = new BatchWriteCommand(cmdParams);
+
+  try {
+    await dbClient.client.send(command);
+  } catch (err) {
+    console.error('BatchWriteCommandInput:', cmdParams);
+    console.error(err);
+    return null;
+    // throw err;
+  }
+
+  return true;
+};
+
+export const deleteItemsAll = async (table: string, keys: StringIndexable[]) => {
+  if (!dbClient.client) tryInit();
+  if (!dbClient.client) return null;
+  if (!table || !keys || !Array.isArray(keys) || !keys.length) return null;
+
+  let errFlag = false;
+
+  const batchSize = BATCH_SIZE;
+  const chunkSize = CHUNK_SIZE;
+
+  const batchedItems = [];
+  for (let i = 0; i < keys.length; i += batchSize) {
+    const bitems = keys.slice(i, i + batchSize);
+    batchedItems.push(bitems);
+  }
+
+  for (let i = 0; i < batchedItems.length; i += chunkSize) {
+    const bchunks = batchedItems.slice(i, i + chunkSize);
+
+    const brlist = bchunks.map(ikeys => batchDeleteItems(table, ikeys));
+    const bslist = await Promise.all(brlist); // eslint-disable-line no-await-in-loop
+
+    const isSuccess = bslist.every(e => e === true);
+    if (!isSuccess) errFlag = true;
+  }
+
+  return errFlag ? null : true;
 };
 
 // ----------------
