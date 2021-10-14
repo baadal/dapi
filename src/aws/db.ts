@@ -32,9 +32,7 @@ import { dbClient } from './client';
 import { StringIndexable } from '../common/common.model';
 import { CustomError } from '../common/error';
 import { warn, error } from '../common/logger';
-
-const BATCH_SIZE = 20; // (max) number of items in a batch request
-const CHUNK_SIZE = 10; // (max) number of parallel requests at a time
+import { BATCH_SIZE, CHUNK_SIZE } from '../common/const';
 
 const DynamoDBError = (msg: string) => new CustomError(msg, { name: 'DynamoDBError' });
 
@@ -240,6 +238,7 @@ export const readItem = async <T = any>(
   } catch (err) {
     console.error('GetCommandInput:', cmdParams);
     console.error(err);
+    return null;
     // throw err;
   }
 
@@ -281,6 +280,7 @@ const batchReadItems = async <T = any>(
   } catch (err) {
     console.error('BatchGetCommandInput:', cmdParams);
     console.error(err);
+    return null;
     // throw err;
   }
 
@@ -373,6 +373,7 @@ export const queryItems = async (
   } catch (err) {
     console.error('QueryCommandInput:', command.input);
     console.error(err);
+    return null;
     // throw err;
   }
 
@@ -401,7 +402,7 @@ export const scanItems = async (table: string, projection = '') => {
 
     // Ref: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Scan.html#Scan.Pagination
     if (results.LastEvaluatedKey) {
-      warn('Partial results obtained! Consider pagination.');
+      warn('[scanItems] Partial results obtained! Consider pagination.');
     }
 
     if (items) {
@@ -410,6 +411,7 @@ export const scanItems = async (table: string, projection = '') => {
   } catch (err) {
     console.error('ScanCommandInput:', cmdParams);
     console.error(err);
+    return null;
     // throw err;
   }
 
@@ -429,8 +431,8 @@ export const deleteItem = async (table: string, key: StringIndexable) => {
   } catch (err) {
     console.error('DeleteCommandInput:', cmdParams);
     console.error(err);
+    return null;
     // throw err;
-    return false;
   }
 
   return true;
