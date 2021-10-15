@@ -36,6 +36,7 @@ import { BATCH_SIZE, CHUNK_SIZE } from '../common/const';
 
 const DynamoDBError = (msg: string) => new CustomError(msg, { name: 'DynamoDBError' });
 
+/** @internal */
 export const init = (region: string) => {
   // Ref: https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/modules/_aws_sdk_lib_dynamodb.html#configuration
   if (!dbClient.client) {
@@ -47,6 +48,7 @@ export const init = (region: string) => {
   return false;
 };
 
+/** @internal */
 export const status = () => dbClient.id;
 
 const tryInit = (silent = false) => {
@@ -67,15 +69,15 @@ const tryInit = (silent = false) => {
 // auto-initialize on load
 tryInit(true);
 
-const writeItemForceHelper = async <T = any>(table: string, data: T, key: string, i: number): Promise<T | null> => {
+const writeItemForceHelper = async <T = any>(table: string, item: T, key: string, i: number): Promise<T | null> => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !data) return null;
+  if (!table || !item) return null;
 
-  if (!(data as any)[key]) {
-    (data as any)[key] = short.uuid();
+  if (!(item as any)[key]) {
+    (item as any)[key] = short.uuid();
   }
-  const cmdParams: PutCommandInput = { TableName: table, Item: data, ConditionExpression: `attribute_not_exists(${key})` };
+  const cmdParams: PutCommandInput = { TableName: table, Item: item, ConditionExpression: `attribute_not_exists(${key})` };
   const command = new PutCommand(cmdParams);
   const numberOfAttempts = 3;
 
@@ -84,8 +86,8 @@ const writeItemForceHelper = async <T = any>(table: string, data: T, key: string
   } catch (err: any) {
     if (err.name === 'ConditionalCheckFailedException') {
       if (i < numberOfAttempts - 1) {
-        (data as any)[key] = short.uuid(); // new primary key
-        const ret: T | null = await writeItemForceHelper(table, data, key, i + 1);
+        (item as any)[key] = short.uuid(); // new primary key
+        const ret: T | null = await writeItemForceHelper(table, item, key, i + 1);
         return ret;
       }
       console.error('PutCommandInput:', cmdParams);
@@ -94,19 +96,67 @@ const writeItemForceHelper = async <T = any>(table: string, data: T, key: string
     return null;
   }
 
-  return data;
+  return item;
 };
 
-export const writeItemForce = async <T = any>(table: string, data: T, key = 'id'): Promise<T | null> => {
-  return writeItemForceHelper<T>(table, data, key, 0);
+export interface WriteItemForceInput<T = any> {
+  table: string;
+  item: T;
+  key?: string;
+}
+
+/**
+ * Write an item to a DynamoDB table, retry in case of key conflict
+ * @param input input command object
+ * @returns created item in case of success, null in case of error
+ *
+ * ```js
+ * writeItemForce({
+ *   table: 'lesson_list',
+ *   item: { title: 'My Lesson' },
+ *   key: 'id',
+ * });
+ *
+ * interface WriteItemForceInput<T = any> {
+ *   table: string;
+ *   item: T;
+ *   key?: string; // default: `id`
+ * }
+ * ```
+ */
+export const writeItemForce = async <T = any>(input: WriteItemForceInput<T>): Promise<T | null> => {
+  const key = input.key || 'id';
+  return writeItemForceHelper<T>(input.table, input.item, key, 0);
 };
 
-export const writeItem = async (table: string, item: StringIndexable) => {
+export interface WriteItemInput {
+  table: string;
+  item: StringIndexable;
+}
+
+/**
+ * Write an item to a DynamoDB table
+ * @param input input command object
+ * @returns true in case of success, null in case of error
+ *
+ * ```js
+ * writeItem({
+ *   table: 'lesson_list',
+ *   item: { id: 'id_001', title: 'My Lesson' },
+ * });
+ *
+ * interface WriteItemInput {
+ *   table: string;
+ *   item: StringIndexable;
+ * }
+ * ```
+ */
+export const writeItem = async (input: WriteItemInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !item) return null;
+  if (!input.table || !input.item) return null;
 
-  const cmdParams: PutCommandInput = { TableName: table, Item: item };
+  const cmdParams: PutCommandInput = { TableName: input.table, Item: input.item };
   const command = new PutCommand(cmdParams);
 
   try {
@@ -148,10 +198,32 @@ const batchWriteItems = async (table: string, items: StringIndexable[]) => {
   return true;
 };
 
-export const writeItemsAll = async (table: string, items: StringIndexable[]) => {
+export interface WriteItemsAllInput {
+  table: string;
+  items: StringIndexable[];
+}
+
+/**
+ * Write an list of items to a DynamoDB table
+ * @param input input command object
+ * @returns true in case of success, null in case of error
+ *
+ * ```js
+ * writeItemsAll({
+ *   table: 'lesson_list',
+ *   items: [{ id: 'id_001', title: 'My Lesson' }, { id: 'id_002', title: 'My Lesson 2' }],
+ * });
+ *
+ * interface WriteItemInput {
+ *   table: string;
+ *   items: StringIndexable[];
+ * }
+ * ```
+ */
+export const writeItemsAll = async (input: WriteItemsAllInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !items || !Array.isArray(items) || !items.length) return null;
+  if (!input.table || !input.items || !Array.isArray(input.items) || !input.items.length) return null;
 
   let errFlag = false;
 
@@ -159,15 +231,15 @@ export const writeItemsAll = async (table: string, items: StringIndexable[]) => 
   const chunkSize = CHUNK_SIZE;
 
   const batchedItems = [];
-  for (let i = 0; i < items.length; i += batchSize) {
-    const bitems = items.slice(i, i + batchSize);
+  for (let i = 0; i < input.items.length; i += batchSize) {
+    const bitems = input.items.slice(i, i + batchSize);
     batchedItems.push(bitems);
   }
 
   for (let i = 0; i < batchedItems.length; i += chunkSize) {
     const bchunks = batchedItems.slice(i, i + chunkSize);
 
-    const brlist = bchunks.map(iItems => batchWriteItems(table, iItems));
+    const brlist = bchunks.map(iItems => batchWriteItems(input.table, iItems));
     const bslist = await Promise.all(brlist); // eslint-disable-line no-await-in-loop
 
     const isSuccess = bslist.every(e => e === true);
@@ -177,24 +249,49 @@ export const writeItemsAll = async (table: string, items: StringIndexable[]) => 
   return errFlag ? null : true;
 };
 
-export const updateItem = async (
-  table: string,
-  key: StringIndexable,
-  update: string,
-  attr: StringIndexable,
-  attrNames?: StringIndexable
-) => {
+export interface UpdateItemInput {
+  table: string;
+  key: StringIndexable;
+  update: string;
+  attr: StringIndexable;
+  attrNames?: StringIndexable;
+}
+
+/**
+ * Update an item in DynamoDB table
+ * @param input input command object
+ * @returns true in case of success, null in case of error
+ *
+ * ```js
+ * updateItem({
+ *   table: 'lesson_list',
+ *   key: { id: 'id_001' },
+ *   update: 'SET status = :status, #rev = 10',
+ *   attr: { ':status': 'completed' },
+ *   attrNames: { '#rev': 'revision' },
+ * });
+ *
+ * interface UpdateItemInput {
+ *   table: string;
+ *   key: StringIndexable;
+ *   update: string;
+ *   attr: StringIndexable;
+ *   attrNames?: StringIndexable;
+ * }
+ * ```
+ */
+export const updateItem = async (input: UpdateItemInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !key || !update || !attr) return null;
+  if (!input.table || !input.key || !input.update || !input.attr) return null;
 
   let cmdParams: UpdateCommandInput = {
-    TableName: table,
-    Key: key,
-    UpdateExpression: update,
-    ExpressionAttributeValues: attr,
+    TableName: input.table,
+    Key: input.key,
+    UpdateExpression: input.update,
+    ExpressionAttributeValues: input.attr,
   };
-  if (attrNames) cmdParams = { ...cmdParams, ExpressionAttributeNames: attrNames };
+  if (input.attrNames) cmdParams = { ...cmdParams, ExpressionAttributeNames: input.attrNames };
   const command = new UpdateCommand(cmdParams);
 
   try {
@@ -209,22 +306,44 @@ export const updateItem = async (
   return true;
 };
 
-export const readItem = async <T = any>(
-  table: string,
-  key: StringIndexable,
-  projection?: string,
-  attrNames?: StringIndexable
-) => {
+export interface ReadItemInput {
+  table: string;
+  key: StringIndexable;
+  projection?: string;
+  attrNames?: StringIndexable;
+}
+
+/**
+ * Read an item from DynamoDB table
+ * @param input input command object
+ * @returns item contents, null in case of error
+ *
+ * ```js
+ * readItem({
+ *   table: 'lesson_list',
+ *   key: { id: 'id_001' },
+ *   projection: 'id, lesson, status',
+ * });
+ *
+ * interface ReadItemInput {
+ *   table: string;
+ *   key: StringIndexable;
+ *   projection?: string;
+ *   attrNames?: StringIndexable;
+ * }
+ * ```
+ */
+export const readItem = async <T = any>(input: ReadItemInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !key) return null;
+  if (!input.table || !input.key) return null;
 
   let contents: T | null = null;
-  let cmdParams: GetCommandInput = { TableName: table, Key: key };
+  let cmdParams: GetCommandInput = { TableName: input.table, Key: input.key };
 
   // Ref: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Expressions.ProjectionExpressions.html
-  if (projection) cmdParams = { ...cmdParams, ProjectionExpression: projection };
-  if (attrNames) cmdParams = { ...cmdParams, ExpressionAttributeNames: attrNames };
+  if (input.projection) cmdParams = { ...cmdParams, ProjectionExpression: input.projection };
+  if (input.attrNames) cmdParams = { ...cmdParams, ExpressionAttributeNames: input.attrNames };
 
   const command = new GetCommand(cmdParams);
 
@@ -287,16 +406,38 @@ const batchReadItems = async <T = any>(
   return contents;
 };
 
-// Note: ordering of items in result may not be same as that in `keys`
-export const readItemsAll = async <T = any>(
-  table: string,
-  keys: StringIndexable[],
-  projection?: string,
-  attrNames?: StringIndexable
-) => {
+export interface ReadItemsAllInput {
+  table: string;
+  keys: StringIndexable[];
+  projection?: string;
+  attrNames?: StringIndexable;
+}
+
+/**
+ * Read a list of items from DynamoDB table
+ * Note: ordering of items in result may not be same as that in `keys`
+ * @param input input command object
+ * @returns list of contents for items, null in case of error
+ *
+ * ```js
+ * readItemsAll({
+ *   table: 'lesson_list',
+ *   keys: [{ id: 'id_001' }, { id: 'id_002' }],
+ *   projection: 'id, lesson, status',
+ * });
+ *
+ * interface ReadItemsAllInput {
+ *   table: string;
+ *   keys: StringIndexable[];
+ *   projection?: string;
+ *   attrNames?: StringIndexable;
+ * }
+ * ```
+ */
+export const readItemsAll = async <T = any>(input: ReadItemsAllInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !keys || !Array.isArray(keys) || !keys.length) return null;
+  if (!input.table || !input.keys || !Array.isArray(input.keys) || !input.keys.length) return null;
 
   let contents: StringIndexable<T>[] | null = null;
   let errFlag = false;
@@ -305,15 +446,15 @@ export const readItemsAll = async <T = any>(
   const chunkSize = CHUNK_SIZE;
 
   const batchedKeys = [];
-  for (let i = 0; i < keys.length; i += batchSize) {
-    const bkeys = keys.slice(i, i + batchSize);
+  for (let i = 0; i < input.keys.length; i += batchSize) {
+    const bkeys = input.keys.slice(i, i + batchSize);
     batchedKeys.push(bkeys);
   }
 
   for (let i = 0; i < batchedKeys.length; i += chunkSize) {
     const bchunks = batchedKeys.slice(i, i + chunkSize);
 
-    const brlist = bchunks.map(ikeys => batchReadItems(table, ikeys, projection, attrNames));
+    const brlist = bchunks.map(ikeys => batchReadItems(input.table, ikeys, input.projection, input.attrNames));
     const bslist = await Promise.all(brlist); // eslint-disable-line no-await-in-loop
 
     const icontents = bslist.flat();
@@ -333,32 +474,64 @@ export const readItemsAll = async <T = any>(
   return contents;
 };
 
-export const queryItems = async (
-  table: string,
-  indexName: string,
-  cond: string,
-  attr: StringIndexable,
-  projection = '',
-  desc = false
-) => {
+export interface QueryItemsInput {
+  table: string;
+  indexName?: string;
+  cond: string;
+  attr: StringIndexable;
+  attrNames?: StringIndexable;
+  projection?: string;
+  desc?: boolean;
+}
+
+/**
+ * Query items from a DynamoDB table based on some condition
+ * @param input input command object
+ * @returns query results array, null in case of error
+ *
+ * ```js
+ * dbQueryItems({
+ *   table: 'lesson_list',
+ *   indexName: 'status-revision-index',
+ *   cond: 'status = :comp AND #rev >= :rev',
+ *   attr: { ':comp': 'completed', ':rev': 9 },
+ *   attrNames: { '#rev': 'revision' },
+ *   projection: 'id, lesson, status, revision',
+ * });
+ *
+ * interface QueryItemsInput {
+ *   table: string;
+ *   indexName?: string;
+ *   cond: string;
+ *   attr: StringIndexable;
+ *   attrNames?: StringIndexable;
+ *   projection?: string;
+ *   desc?: boolean;
+ * }
+ * ```
+ */
+export const queryItems = async (input: QueryItemsInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !cond || !attr) return null;
+  if (!input.table || !input.cond || !input.attr) return null;
 
   let contents: StringIndexable[] | null = null;
+  const desc = input.desc || false;
 
+  // Ref: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Query.html
   // Ref: https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_Query.html
   // Ref: https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/dynamodb-example-query-scan.html
   // Ref: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/SQLtoNoSQL.Indexes.QueryAndScan.html#SQLtoNoSQL.Indexes.QueryAndScan.DynamoDB
   let cmdParams: QueryCommandInput = {
-    TableName: table,
-    KeyConditionExpression: cond,
-    ExpressionAttributeValues: attr,
+    TableName: input.table,
+    KeyConditionExpression: input.cond,
+    ExpressionAttributeValues: input.attr,
     // FilterExpression: "contains (category_id, :cid)",
   };
 
-  if (indexName) cmdParams = { ...cmdParams, IndexName: indexName };
-  if (projection) cmdParams = { ...cmdParams, ProjectionExpression: projection };
+  if (input.indexName) cmdParams = { ...cmdParams, IndexName: input.indexName };
+  if (input.attrNames) cmdParams = { ...cmdParams, ExpressionAttributeNames: input.attrNames };
+  if (input.projection) cmdParams = { ...cmdParams, ProjectionExpression: input.projection };
   if (desc) cmdParams = { ...cmdParams, ScanIndexForward: false };
 
   const command = new QueryCommand(cmdParams);
@@ -380,19 +553,42 @@ export const queryItems = async (
   return contents;
 };
 
-export const scanItems = async (table: string, projection = '') => {
+export interface ScanItemsInput {
+  table: string;
+  projection?: string;
+}
+
+/**
+ * Scan all items in a DynamoDB table
+ * Note: avoid using this method in favour of `queryItems` method due to performance reasons
+ * @param input input command object
+ * @returns results of the scan query, null in case of error
+ *
+ * ```js
+ * scanItems({
+ *   table: 'lesson_list',
+ *   projection: 'id, status',
+ * });
+ *
+ * interface ScanItemsInput {
+ *   table: string;
+ *   projection?: string;
+ * }
+ * ```
+ */
+export const scanItems = async (input: ScanItemsInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table) return null;
+  if (!input.table) return null;
 
   let contents: StringIndexable[] | null = null;
 
   // Ref: https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/dynamodb-example-query-scan.html
   let cmdParams: ScanCommandInput = {
-    TableName: table,
+    TableName: input.table,
   };
 
-  if (projection) cmdParams = { ...cmdParams, ProjectionExpression: projection };
+  if (input.projection) cmdParams = { ...cmdParams, ProjectionExpression: input.projection };
 
   const command = new ScanCommand(cmdParams);
 
@@ -418,12 +614,34 @@ export const scanItems = async (table: string, projection = '') => {
   return contents;
 };
 
-export const deleteItem = async (table: string, key: StringIndexable) => {
+export interface DeleteItemInput {
+  table: string;
+  key: StringIndexable;
+}
+
+/**
+ * Delete an item in a DynamoDB table
+ * @param input input command object
+ * @returns true in case of success, null in case of error
+ *
+ * ```js
+ * deleteItem({
+ *   table: 'lesson_list',
+ *   key: { id: 'id_001' },
+ * });
+ *
+ * interface DeleteItemInput {
+ *   table: string;
+ *   key: StringIndexable;
+ * }
+ * ```
+ */
+export const deleteItem = async (input: DeleteItemInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !key) return null;
+  if (!input.table || !input.key) return null;
 
-  const cmdParams: DeleteCommandInput = { TableName: table, Key: key };
+  const cmdParams: DeleteCommandInput = { TableName: input.table, Key: input.key };
   const command = new DeleteCommand(cmdParams);
 
   try {
@@ -466,10 +684,32 @@ const batchDeleteItems = async (table: string, keys: StringIndexable[]) => {
   return true;
 };
 
-export const deleteItemsAll = async (table: string, keys: StringIndexable[]) => {
+export interface DeleteItemsAllInput {
+  table: string;
+  keys: StringIndexable[];
+}
+
+/**
+ * Delete a list of items in a DynamoDB table
+ * @param input input command object
+ * @returns true in case of success, null in case of error
+ *
+ * ```js
+ * deleteItemsAll({
+ *   table: 'lesson_list',
+ *   keys: [{ id: 'id_001' }, { id: 'id_002' }],
+ * });
+ *
+ * interface DeleteItemsAllInput {
+ *   table: string;
+ *   keys: StringIndexable[];
+ * }
+ * ```
+ */
+export const deleteItemsAll = async (input: DeleteItemsAllInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !keys || !Array.isArray(keys) || !keys.length) return null;
+  if (!input.table || !input.keys || !Array.isArray(input.keys) || !input.keys.length) return null;
 
   let errFlag = false;
 
@@ -477,15 +717,15 @@ export const deleteItemsAll = async (table: string, keys: StringIndexable[]) => 
   const chunkSize = CHUNK_SIZE;
 
   const batchedItems = [];
-  for (let i = 0; i < keys.length; i += batchSize) {
-    const bitems = keys.slice(i, i + batchSize);
+  for (let i = 0; i < input.keys.length; i += batchSize) {
+    const bitems = input.keys.slice(i, i + batchSize);
     batchedItems.push(bitems);
   }
 
   for (let i = 0; i < batchedItems.length; i += chunkSize) {
     const bchunks = batchedItems.slice(i, i + chunkSize);
 
-    const brlist = bchunks.map(ikeys => batchDeleteItems(table, ikeys));
+    const brlist = bchunks.map(ikeys => batchDeleteItems(input.table, ikeys));
     const bslist = await Promise.all(brlist); // eslint-disable-line no-await-in-loop
 
     const isSuccess = bslist.every(e => e === true);
@@ -494,20 +734,3 @@ export const deleteItemsAll = async (table: string, keys: StringIndexable[]) => 
 
   return errFlag ? null : true;
 };
-
-// ----------------
-
-// await dbWriteItem('lesson_list', { id: 'id_001', title: 'My Lesson' });
-
-// const contents = await dbReadItem('lesson_list', { id: 'id_001' });
-// console.log(contents);
-
-// await dbUpdateItem(
-//   'lesson_list',
-//   { id: 'id_001' },
-//   'set #a = :a, #b = :b',
-//   { ':a': 'abhi@raj.me', ':b': 'Abhishek Raj' },
-//   { '#a': 'email', '#b': 'name' }
-// );
-
-// ----------------
