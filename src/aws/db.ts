@@ -27,6 +27,7 @@ import {
   DeleteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import short from 'short-uuid';
+import { chunkifyArray } from '@baadal-sdk/utils';
 
 import { dbClient } from './client';
 import { StringIndexable } from '../common/common.model';
@@ -108,7 +109,7 @@ export interface WriteItemForceInput<T = any> {
 /**
  * Write an item to a DynamoDB table, retry in case of key conflict
  * @param input input command object
- * @returns created item in case of success, null in case of error
+ * @returns the created item, null in case of error
  *
  * ```js
  * writeItemForce({
@@ -137,7 +138,7 @@ export interface WriteItemInput {
 /**
  * Write an item to a DynamoDB table
  * @param input input command object
- * @returns true in case of success, null in case of error
+ * @returns true if successful, null in case of error
  *
  * ```js
  * writeItem({
@@ -206,7 +207,7 @@ export interface WriteItemsAllInput {
 /**
  * Write an list of items to a DynamoDB table
  * @param input input command object
- * @returns true in case of success, null in case of error
+ * @returns true if successful, null in case of error
  *
  * ```js
  * writeItemsAll({
@@ -227,17 +228,11 @@ export const writeItemsAll = async (input: WriteItemsAllInput) => {
 
   let errFlag = false;
 
-  const batchSize = BATCH_SIZE;
-  const chunkSize = CHUNK_SIZE;
+  const batchedItems = chunkifyArray(input.items, BATCH_SIZE);
+  const chunkedItems = chunkifyArray(batchedItems, CHUNK_SIZE);
 
-  const batchedItems = [];
-  for (let i = 0; i < input.items.length; i += batchSize) {
-    const bitems = input.items.slice(i, i + batchSize);
-    batchedItems.push(bitems);
-  }
-
-  for (let i = 0; i < batchedItems.length; i += chunkSize) {
-    const bchunks = batchedItems.slice(i, i + chunkSize);
+  for (let i = 0; i < chunkedItems.length; i += 1) {
+    const bchunks = chunkedItems[i];
 
     const brlist = bchunks.map(iItems => batchWriteItems(input.table, iItems));
     const bslist = await Promise.all(brlist); // eslint-disable-line no-await-in-loop
@@ -260,7 +255,7 @@ export interface UpdateItemInput {
 /**
  * Update an item in DynamoDB table
  * @param input input command object
- * @returns true in case of success, null in case of error
+ * @returns true if successful, null in case of error
  *
  * ```js
  * updateItem({
@@ -442,17 +437,11 @@ export const readItemsAll = async <T = any>(input: ReadItemsAllInput) => {
   let contents: StringIndexable<T>[] | null = null;
   let errFlag = false;
 
-  const batchSize = BATCH_SIZE;
-  const chunkSize = CHUNK_SIZE;
+  const batchedKeys = chunkifyArray(input.keys, BATCH_SIZE);
+  const chunkedKeys = chunkifyArray(batchedKeys, CHUNK_SIZE);
 
-  const batchedKeys = [];
-  for (let i = 0; i < input.keys.length; i += batchSize) {
-    const bkeys = input.keys.slice(i, i + batchSize);
-    batchedKeys.push(bkeys);
-  }
-
-  for (let i = 0; i < batchedKeys.length; i += chunkSize) {
-    const bchunks = batchedKeys.slice(i, i + chunkSize);
+  for (let i = 0; i < chunkedKeys.length; i += 1) {
+    const bchunks = chunkedKeys[i];
 
     const brlist = bchunks.map(ikeys => batchReadItems(input.table, ikeys, input.projection, input.attrNames));
     const bslist = await Promise.all(brlist); // eslint-disable-line no-await-in-loop
@@ -622,7 +611,7 @@ export interface DeleteItemInput {
 /**
  * Delete an item in a DynamoDB table
  * @param input input command object
- * @returns true in case of success, null in case of error
+ * @returns true if successful, null in case of error
  *
  * ```js
  * deleteItem({
@@ -692,7 +681,7 @@ export interface DeleteItemsAllInput {
 /**
  * Delete a list of items in a DynamoDB table
  * @param input input command object
- * @returns true in case of success, null in case of error
+ * @returns true if successful, null in case of error
  *
  * ```js
  * deleteItemsAll({
@@ -713,17 +702,11 @@ export const deleteItemsAll = async (input: DeleteItemsAllInput) => {
 
   let errFlag = false;
 
-  const batchSize = BATCH_SIZE;
-  const chunkSize = CHUNK_SIZE;
+  const batchedItems = chunkifyArray(input.keys, BATCH_SIZE);
+  const chunkedItems = chunkifyArray(batchedItems, CHUNK_SIZE);
 
-  const batchedItems = [];
-  for (let i = 0; i < input.keys.length; i += batchSize) {
-    const bitems = input.keys.slice(i, i + batchSize);
-    batchedItems.push(bitems);
-  }
-
-  for (let i = 0; i < batchedItems.length; i += chunkSize) {
-    const bchunks = batchedItems.slice(i, i + chunkSize);
+  for (let i = 0; i < chunkedItems.length; i += 1) {
+    const bchunks = chunkedItems[i];
 
     const brlist = bchunks.map(ikeys => batchDeleteItems(input.table, ikeys));
     const bslist = await Promise.all(brlist); // eslint-disable-line no-await-in-loop
