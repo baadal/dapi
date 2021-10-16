@@ -1,7 +1,13 @@
+import path from 'path';
 import crypto from 'crypto';
 import fsa from 'fs/promises';
 
 import { error } from '../common/logger';
+
+export const assertPath = (p: string) => {
+  if (!p || p.startsWith('/')) return p;
+  return path.resolve(process.cwd(), p);
+};
 
 export const sha1Hash = (data: string) => {
   if (!data) return null;

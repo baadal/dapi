@@ -1,15 +1,10 @@
-import path from 'path';
 import util from 'util';
 import fs from 'fs';
 import fsa from 'fs/promises';
 
+import { assertPath } from '../utils';
 import { CustomError } from '../common/error';
 import { warn as cwarn } from '../common/logger';
-
-const assertPath = (p: string) => {
-  if (!p || p.startsWith('/')) return p;
-  return path.resolve(process.cwd(), p);
-};
 
 /**
  * Check whether a file exists
