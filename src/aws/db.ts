@@ -176,7 +176,8 @@ export const writeItem = async (input: WriteItemInput) => {
 const batchWriteItems = async (table: string, items: StringIndexable[]) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !items || !Array.isArray(items) || !items.length) return null;
+  if (!table || !items || !Array.isArray(items)) return null;
+  if (!items.length) return true;
 
   const reqList = items.map(item => ({ PutRequest: { Item: item } }));
   const cmdParams: BatchWriteCommandInput = {
@@ -205,7 +206,7 @@ export interface WriteItemsAllInput {
 }
 
 /**
- * Write an list of items to a DynamoDB table
+ * Write a list of items to a DynamoDB table
  * @param input input command object
  * @returns true if successful, null in case of error
  *
@@ -224,7 +225,8 @@ export interface WriteItemsAllInput {
 export const writeItemsAll = async (input: WriteItemsAllInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!input.table || !input.items || !Array.isArray(input.items) || !input.items.length) return null;
+  if (!input.table || !input.items || !Array.isArray(input.items)) return null;
+  if (!input.items.length) return true;
 
   let errFlag = false;
 
@@ -368,9 +370,10 @@ const batchReadItems = async <T = any>(
 ) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !keys || !Array.isArray(keys) || !keys.length) return null;
+  if (!table || !keys || !Array.isArray(keys)) return null;
+  if (!keys.length) return [];
 
-  let contents: StringIndexable<T>[] | null = null;
+  let contents: StringIndexable<T>[] = [];
 
   let reqParams: any = { Keys: keys };
   if (projection) reqParams = { ...reqParams, ProjectionExpression: projection };
@@ -432,9 +435,10 @@ export interface ReadItemsAllInput {
 export const readItemsAll = async <T = any>(input: ReadItemsAllInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!input.table || !input.keys || !Array.isArray(input.keys) || !input.keys.length) return null;
+  if (!input.table || !input.keys || !Array.isArray(input.keys)) return null;
+  if (!input.keys.length) return [];
 
-  let contents: StringIndexable<T>[] | null = null;
+  let contents: StringIndexable<T>[] = [];
   let errFlag = false;
 
   const batchedKeys = chunkifyArray(input.keys, BATCH_SIZE);
@@ -450,13 +454,10 @@ export const readItemsAll = async <T = any>(input: ReadItemsAllInput) => {
     const isError = icontents.find(e => e === null) === null;
     if (isError) {
       errFlag = true;
-      contents = null;
-    } else if (!errFlag) {
-      if (contents) {
-        contents = contents.concat(icontents as StringIndexable[]);
-      } else {
-        contents = icontents as StringIndexable[];
-      }
+      return null;
+    }
+    if (!errFlag) {
+      contents = contents.concat(icontents as StringIndexable[]);
     }
   }
 
@@ -504,7 +505,7 @@ export const queryItems = async (input: QueryItemsInput) => {
   if (!dbClient.client) return null;
   if (!input.table || !input.cond || !input.attr) return null;
 
-  let contents: StringIndexable[] | null = null;
+  let contents: StringIndexable[] = [];
   const desc = input.desc || false;
 
   // Ref: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Query.html
@@ -570,7 +571,7 @@ export const scanItems = async (input: ScanItemsInput) => {
   if (!dbClient.client) return null;
   if (!input.table) return null;
 
-  let contents: StringIndexable[] | null = null;
+  let contents: StringIndexable[] = [];
 
   // Ref: https://docs.aws.amazon.com/sdk-for-javascript/v3/developer-guide/dynamodb-example-query-scan.html
   let cmdParams: ScanCommandInput = {
@@ -650,7 +651,8 @@ export const deleteItem = async (input: DeleteItemInput) => {
 const batchDeleteItems = async (table: string, keys: StringIndexable[]) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!table || !keys || !Array.isArray(keys) || !keys.length) return null;
+  if (!table || !keys || !Array.isArray(keys)) return null;
+  if (!keys.length) return true;
 
   const reqList = keys.map(key => ({ DeleteRequest: { Key: key } }));
   const cmdParams: BatchWriteCommandInput = {
@@ -698,7 +700,8 @@ export interface DeleteItemsAllInput {
 export const deleteItemsAll = async (input: DeleteItemsAllInput) => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
-  if (!input.table || !input.keys || !Array.isArray(input.keys) || !input.keys.length) return null;
+  if (!input.table || !input.keys || !Array.isArray(input.keys)) return null;
+  if (!input.keys.length) return true;
 
   let errFlag = false;
 
