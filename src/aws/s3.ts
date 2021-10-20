@@ -170,12 +170,13 @@ export const uploadFile = async (bucket: string, file: string, s3path?: string) 
  * @param bucket S3 bucket name
  * @param files (local) list of file paths to upload
  * @param s3paths [optional] S3 path to be created, if not provided then derived from `file` path
- * @returns true if the write is successful, null in case of error
+ * @returns true if all uploads are successful, null in case of error
  */
 export const uploadFilesAll = async (bucket: string, files: string[], s3paths?: string[]) => {
   if (!s3Client.client) tryInit();
   if (!s3Client.client) return null;
-  if (!bucket || !files || !Array.isArray(files) || !files.length) return null;
+  if (!bucket || !files || !Array.isArray(files)) return null;
+  if (!files.length) return true;
   if (s3paths && (!Array.isArray(s3paths) || !s3paths.length || files.length !== s3paths.length)) return null;
 
   let errFlag = false;
@@ -292,7 +293,7 @@ export const listObjects = async (bucket: string, prefix?: string) => {
   if (!s3Client.client) return null;
   if (!bucket) return null;
 
-  let filesList: string[] | null = null;
+  let filesList: string[] = [];
 
   let cmdParams: ListObjectsV2CommandInput = { Bucket: bucket };
   if (prefix) cmdParams = { ...cmdParams, Prefix: prefix };
@@ -363,9 +364,10 @@ export const getObjectHead = async (bucket: string, s3path: string) => {
 export const getObjectHeadsAll = async (bucket: string, s3paths: string[]) => {
   if (!s3Client.client) tryInit();
   if (!s3Client.client) return null;
-  if (!bucket || !s3paths || !Array.isArray(s3paths) || !s3paths.length) return null;
+  if (!bucket || !s3paths || !Array.isArray(s3paths)) return null;
+  if (!s3paths.length) return [];
 
-  let contents: (HeadObject | null)[] | null = null;
+  let contents: (HeadObject | null)[] = [];
 
   const chunkedItems = chunkifyArray(s3paths, CHUNK_SIZE);
 
@@ -374,18 +376,14 @@ export const getObjectHeadsAll = async (bucket: string, s3paths: string[]) => {
     const pList = chunk.map(item => getObjectHead(bucket, item));
     const rList = await Promise.all(pList); // eslint-disable-line no-await-in-loop
 
-    if (contents) {
-      contents = contents.concat(rList);
-    } else {
-      contents = rList;
-    }
+    contents = contents.concat(rList);
   }
 
-  if (contents?.length) {
+  if (contents.length) {
     contents = contents.filter(e => !!e);
   }
 
-  return contents;
+  return contents as HeadObject[];
 };
 
 /**
@@ -417,7 +415,8 @@ export const deleteObject = async (bucket: string, s3path: string) => {
 const batchDeleteObjects = async (bucket: string, s3paths: string[]) => {
   if (!s3Client.client) tryInit();
   if (!s3Client.client) return null;
-  if (!bucket || !s3paths || !Array.isArray(s3paths) || !s3paths.length) return null;
+  if (!bucket || !s3paths || !Array.isArray(s3paths)) return null;
+  if (!s3paths.length) return true;
 
   const keys = s3paths.map(key => ({ Key: key }));
   const cmdParams: DeleteObjectsCommandInput = { Bucket: bucket, Delete: { Objects: keys } };
@@ -444,7 +443,8 @@ const batchDeleteObjects = async (bucket: string, s3paths: string[]) => {
 export const deleteObjectsAll = async (bucket: string, s3paths: string[]) => {
   if (!s3Client.client) tryInit();
   if (!s3Client.client) return null;
-  if (!bucket || !s3paths || !Array.isArray(s3paths) || !s3paths.length) return null;
+  if (!bucket || !s3paths || !Array.isArray(s3paths)) return null;
+  if (!s3paths.length) return true;
 
   let errFlag = false;
 

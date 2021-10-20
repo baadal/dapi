@@ -10,10 +10,10 @@ import { warn as cwarn } from '../common/logger';
  * Check whether a file exists
  * @param file file path
  * @param loud whether to throw errors [default: false]
- * @returns true if it exists, false otherwise
+ * @returns true if it exists, false if it doesn't, null in case of error
  */
 export const existsFileSync = (file: string, loud = false) => {
-  if (!file) return false;
+  if (!file) return null;
   file = assertPath(file);
   try {
     if (!fs.existsSync(file)) {
@@ -21,7 +21,7 @@ export const existsFileSync = (file: string, loud = false) => {
       throw new CustomError(`File does not exist: ${file}`);
     }
   } catch (e) {
-    if (!loud) return false;
+    if (!loud) return null;
     if (e instanceof CustomError) {
       throw e;
     } else {
@@ -35,10 +35,10 @@ export const existsFileSync = (file: string, loud = false) => {
  * Check whether a directory exists
  * @param dir directory path
  * @param loud whether to throw errors [default: false]
- * @returns true if it exists, false otherwise
+ * @returns true if it exists, false if it doesn't, null in case of error
  */
 export const existsDirSync = (dir: string, loud = false) => {
-  if (!dir) return false;
+  if (!dir) return null;
   dir = assertPath(dir);
   try {
     if (!fs.existsSync(dir)) {
@@ -46,7 +46,7 @@ export const existsDirSync = (dir: string, loud = false) => {
       throw new CustomError(`Directory does not exist: ${dir}`);
     }
   } catch (e) {
-    if (!loud) return false;
+    if (!loud) return null;
     if (e instanceof CustomError) {
       throw e;
     } else {
@@ -97,42 +97,35 @@ export const readFileSync = (file: string, warn = false) => {
  * @param dir directory path
  * @param warn whether to show warnings [default: false]
  * @param hiddenItems whether to include items starting with dot(.) [default: false]
- * @returns an object {dirs,files} containing list of directories & files
+ * @returns an object {dirs,files} containing list of directories & files, null in case or error
  */
 export const readDir = async (dir: string, warn = false, hiddenItems = false) => {
-  if (!dir) return { dirs: null, files: null };
+  if (!dir) return null;
   dir = assertPath(dir);
 
-  let dirs: string[] | null = null;
-  let files: string[] | null = null;
+  let dirs: string[] = [];
+  let files: string[] = [];
 
   try {
     const items = await fsa.readdir(dir, { withFileTypes: true });
     items.forEach(item => {
       if (item.isDirectory()) {
-        if (!dirs) {
-          dirs = [item.name];
-        } else {
-          dirs.push(item.name);
-        }
+        dirs.push(item.name);
       } else if (item.isFile()) {
-        if (!files) {
-          files = [item.name];
-        } else {
-          files.push(item.name);
-        }
+        files.push(item.name);
       }
     });
   } catch (e) {
     if (warn) cwarn(`Cannot read dir: ${dir}`);
+    return null;
   }
 
   if (!hiddenItems) {
-    if (dirs) dirs = (dirs as string[]).filter(d => !d.startsWith('.'));
-    if (files) files = (files as string[]).filter(f => !f.startsWith('.'));
+    dirs = (dirs as string[]).filter(d => !d.startsWith('.'));
+    files = (files as string[]).filter(f => !f.startsWith('.'));
   }
 
-  return { dirs, files } as { dirs: string[] | null; files: string[] | null };
+  return { dirs, files };
 };
 
 /**
@@ -140,12 +133,12 @@ export const readDir = async (dir: string, warn = false, hiddenItems = false) =>
  * @param dir directory path
  * @param warn whether to show warnings [default: false]
  * @param hiddenItems whether to include items starting with dot(.) [default: false]
- * @returns list of files, null in case of error or no items
+ * @returns list of files, null in case of error
  */
 export const readDirFiles = async (dir: string, warn = false, hiddenItems = false) => {
   if (!dir) return null;
   dir = assertPath(dir);
-  return (await readDir(dir, warn, hiddenItems)).files;
+  return (await readDir(dir, warn, hiddenItems))?.files || null;
 };
 
 /**
@@ -153,12 +146,12 @@ export const readDirFiles = async (dir: string, warn = false, hiddenItems = fals
  * @param dir directory path
  * @param warn whether to show warnings [default: false]
  * @param hiddenItems whether to include items starting with dot(.) [default: false]
- * @returns list of directories, null in case of error or no items
+ * @returns list of directories, null in case of error
  */
 export const readDirDirs = async (dir: string, warn = false, hiddenItems = false) => {
   if (!dir) return null;
   dir = assertPath(dir);
-  return (await readDir(dir, warn, hiddenItems)).dirs;
+  return (await readDir(dir, warn, hiddenItems))?.dirs || null;
 };
 
 const readDirFilesRecHelper = async (dir: string, basePath = ''): Promise<string[] | null> => {
@@ -166,7 +159,10 @@ const readDirFilesRecHelper = async (dir: string, basePath = ''): Promise<string
   dir = assertPath(dir);
 
   const dirPath = basePath ? `${dir}/${basePath}` : dir;
-  const { dirs, files } = await readDir(dirPath);
+  const readDirObj = await readDir(dirPath);
+  if (!readDirObj) return null;
+
+  const { dirs, files } = readDirObj;
   let allFiles: string[] = files || [];
   allFiles = allFiles.map(file => (basePath ? `${basePath}/${file}` : file));
   const absDirs = (dirs || []).map(d => (basePath ? `${basePath}/${d}` : d));
@@ -179,14 +175,14 @@ const readDirFilesRecHelper = async (dir: string, basePath = ''): Promise<string
     }
   });
 
-  return allFiles.length ? allFiles : null;
+  return allFiles;
 };
 
 /**
  * Get the (recursive) list of files in a directory
  * @param dir directory path
  * @param hiddenItems whether to include items starting with dot(.) [default: false]
- * @returns complete (recursive) list of files, null in case of error or no items
+ * @returns complete (recursive) list of files, null in case of error
  */
 export const readDirFilesRec = async (dir: string, hiddenItems = false) => {
   let allFiles = await readDirFilesRecHelper(dir);
@@ -200,10 +196,10 @@ export const readDirFilesRec = async (dir: string, hiddenItems = false) => {
  * Write contents to a file (creates the file path if it doesn't exist)
  * @param file file path
  * @param contents contents to write
- * @returns true if successful, false on error
+ * @returns true if successful, null in case of error
  */
 export const writeFile = async (file: string, contents: string) => {
-  if (!file || !contents) return false;
+  if (!file || !contents) return null;
   file = assertPath(file);
   try {
     const dir = file.substring(0, file.lastIndexOf('/'));
@@ -211,7 +207,7 @@ export const writeFile = async (file: string, contents: string) => {
     await fsa.writeFile(file, contents);
   } catch (e) {
     console.error(`Error while writing to ${file}`, e);
-    return false;
+    return null;
   }
   return true;
 };
@@ -220,10 +216,10 @@ export const writeFile = async (file: string, contents: string) => {
  * Append contents to a file
  * @param file file path
  * @param contents contents to append
- * @returns true if successful, false on error
+ * @returns true if successful, null in case of error
  */
 export const appendToFile = async (file: string, contents: string) => {
-  if (!file || !contents) return false;
+  if (!file || !contents) return null;
   file = assertPath(file);
   try {
     const dir = file.substring(0, file.lastIndexOf('/'));
@@ -237,7 +233,7 @@ export const appendToFile = async (file: string, contents: string) => {
     // stream.end();
   } catch (e) {
     console.error(`Error while appending to ${file}`, e);
-    return false;
+    return null;
   }
   return true;
 };
@@ -246,17 +242,17 @@ export const appendToFile = async (file: string, contents: string) => {
  * Rename a file
  * @param oldpath old file path
  * @param newpath new file path
- * @returns true if successful, false on error
+ * @returns true if successful, null in case of error
  */
 export const renameFile = async (oldpath: string, newpath: string) => {
-  if (!oldpath || !newpath) return false;
+  if (!oldpath || !newpath) return null;
   oldpath = assertPath(oldpath);
   newpath = assertPath(newpath);
   try {
     await fsa.rename(oldpath, newpath);
   } catch (e) {
     console.error(`Error while renaming file ${oldpath} to ${newpath}`, e);
-    return false;
+    return null;
   }
   return true;
 };
@@ -264,10 +260,10 @@ export const renameFile = async (oldpath: string, newpath: string) => {
 /**
  * Create a directory, if it doesn't exist
  * @param dir directory path
- * @returns true if successful, false in case of failure
+ * @returns true if successful, null in case of failure/error
  */
 export const createDir = async (dir: string) => {
-  if (!dir) return false;
+  if (!dir) return null;
   dir = assertPath(dir);
   try {
     if (!existsDirSync(dir)) {
@@ -275,7 +271,7 @@ export const createDir = async (dir: string) => {
     }
   } catch (e) {
     console.error(`Error while creating directory: ${dir}`, e);
-    return false;
+    return null;
   }
   return true;
 };
@@ -283,16 +279,16 @@ export const createDir = async (dir: string) => {
 /**
  * Delete a file
  * @param file file path
- * @returns true if successful, false on error
+ * @returns true if successful, null in case of error
  */
 export const deleteFile = async (file: string) => {
-  if (!file) return false;
+  if (!file) return null;
   file = assertPath(file);
   try {
     await fsa.unlink(file);
   } catch (e) {
     console.error(`Error while deleting file ${file}`, e);
-    return false;
+    return null;
   }
   return true;
 };
@@ -300,10 +296,10 @@ export const deleteFile = async (file: string) => {
 /**
  * Delete a directory
  * @param dir directory path
- * @returns true if successful, false on error
+ * @returns true if successful, null in case of error
  */
 export const deleteDir = async (dir: string) => {
-  if (!dir) return false;
+  if (!dir) return null;
   dir = assertPath(dir);
   try {
     const rimraf = require('rimraf');
@@ -314,7 +310,7 @@ export const deleteDir = async (dir: string) => {
     // await fsa.rm(dir, { recursive: true, force: true });
   } catch (e) {
     console.error(`Error while deleting dir ${dir}`, e);
-    return false;
+    return null;
   }
   return true;
 };
