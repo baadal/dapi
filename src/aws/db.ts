@@ -308,6 +308,7 @@ export interface ReadItemInput {
   key: StringIndexable;
   projection?: string;
   attrNames?: StringIndexable;
+  loud?: boolean;
 }
 
 /**
@@ -354,8 +355,11 @@ export const readItem = async <T = any>(input: ReadItemInput) => {
   } catch (err) {
     console.error('GetCommandInput:', cmdParams);
     console.error(err);
-    return null;
-    // throw err;
+    if (input.loud) {
+      throw err;
+    } else {
+      return null;
+    }
   }
 
   return contents;
