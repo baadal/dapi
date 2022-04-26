@@ -33,7 +33,7 @@ import { dbClient } from './client';
 import { StringIndexable } from '../common/common.model';
 import { CustomError } from '../common/error';
 import { warn, error } from '../common/logger';
-import { BATCH_SIZE, CHUNK_SIZE } from '../common/const';
+import { BATCH_SIZE, CHUNK_SIZE, MAX_RETRY_ATTEMPTS } from '../common/const';
 
 const DynamoDBError = (msg: string) => new CustomError(msg, { name: 'DynamoDBError' });
 
@@ -70,7 +70,13 @@ const tryInit = (silent = false) => {
 // auto-initialize on load
 tryInit(true);
 
-const writeItemForceHelper = async <T = any>(table: string, item: T, key: string, i: number): Promise<T | null> => {
+const writeItemForceHelper = async <T = any>(
+  table: string,
+  item: T,
+  key: string,
+  i: number,
+  imax?: number
+): Promise<T | null> => {
   if (!dbClient.client) tryInit();
   if (!dbClient.client) return null;
   if (!table || !item) return null;
@@ -80,7 +86,7 @@ const writeItemForceHelper = async <T = any>(table: string, item: T, key: string
   }
   const cmdParams: PutCommandInput = { TableName: table, Item: item, ConditionExpression: `attribute_not_exists(${key})` };
   const command = new PutCommand(cmdParams);
-  const numberOfAttempts = 3;
+  const numberOfAttempts = imax ?? MAX_RETRY_ATTEMPTS;
 
   try {
     await dbClient.client.send(command);
@@ -88,11 +94,15 @@ const writeItemForceHelper = async <T = any>(table: string, item: T, key: string
     if (err.name === 'ConditionalCheckFailedException') {
       if (i < numberOfAttempts - 1) {
         (item as any)[key] = short.uuid(); // new primary key
-        const ret: T | null = await writeItemForceHelper(table, item, key, i + 1);
+        const ret: T | null = await writeItemForceHelper(table, item, key, i + 1, imax);
         return ret;
       }
       console.error('PutCommandInput:', cmdParams);
-      error('[ERROR] Maximum attempts overflow!');
+      if (numberOfAttempts === 1) {
+        error(`[ERROR] An item with the same key(${(item as any)[key]}) already exists!`);
+      } else {
+        error('[ERROR] Maximum attempts overflow!');
+      }
     }
     return null;
   }
@@ -105,6 +115,8 @@ export interface WriteItemForceInput<T = any> {
   item: T;
   key?: string;
 }
+
+export type WriteItemUniqueInput<T = any> = WriteItemForceInput<T>;
 
 /**
  * Write an item to a DynamoDB table, retry in case of key conflict
@@ -128,6 +140,32 @@ export interface WriteItemForceInput<T = any> {
 export const writeItemForce = async <T = any>(input: WriteItemForceInput<T>): Promise<T | null> => {
   const key = input.key || 'id';
   return writeItemForceHelper<T>(input.table, input.item, key, 0);
+};
+
+/**
+ * Write an item (uniquely) to a DynamoDB table.
+ * Unlike `writeItemForce`, it does not retry in case of key conflict
+ * Unlike `writeItem`, it does not overwrite an item with the same key (if it exists)
+ * @param input input command object
+ * @returns the created item, null in case of error or key conflict (i.e., if item with same key already exists)
+ *
+ * ```js
+ * writeItemUnique({
+ *   table: 'lesson_list',
+ *   item: { id: 'id_001', title: 'My Lesson' },
+ *   key: 'id',
+ * });
+ *
+ * interface WriteItemUniqueInput<T = any> {
+ *   table: string;
+ *   item: T;
+ *   key?: string; // default: `id`
+ * }
+ * ```
+ */
+export const writeItemUnique = async <T = any>(input: WriteItemUniqueInput<T>): Promise<T | null> => {
+  const key = input.key || 'id';
+  return writeItemForceHelper<T>(input.table, input.item, key, 0, 1);
 };
 
 export interface WriteItemInput {
